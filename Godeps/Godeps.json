@@ -1,0 +1,25 @@
+{
+	"ImportPath": "github.com/joycetawfikmagdy/JJ-MM",
+	"GoVersion": "go1.9",
+	"GodepVersion": "v79",
+	"Deps": [
+		{
+			"ImportPath": "github.com/heppu/simple-cors",
+			"Rev": "543cdec07e0c196abd48c5d966c0a0684cc47308"
+		},
+		{
+			"ImportPath": "github.com/pkg/errors",
+			"Comment": "v0.8.0-7-gf15c970",
+			"Rev": "f15c970de5b76fac0b59abb32d62c17cc7bed265"
+		},
+		{
+			"ImportPath": "github.com/satori/go.uuid",
+			"Comment": "v1.1.0-8-g5bf94b6",
+			"Rev": "5bf94b69c6b68ee1b541973bb8e1144db23a194b"
+		},
+		{
+			"ImportPath": "github.com/torniker/infermedica",
+			"Rev": "197f08ac7a8fd62a7a899bb88e8cf2497dfcbae0"
+		}
+	]
+}
