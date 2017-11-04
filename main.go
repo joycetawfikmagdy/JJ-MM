@@ -13,6 +13,7 @@ import (
     "fmt"
     "net/http/httptest"
     "os"
+    "crypto/tls"
     cors "github.com/heppu/simple-cors"
 )
 // "github.com/gorilla/mux" 
@@ -27,21 +28,24 @@ var (
     // sessions = {
     //   "uuid1" = Session{...},
     //   ...
-
+//app key
+   
      app = infermedica.NewApp("a3e97cd7", "af637361b0854d49d87b6af528c086dc", "")
     // }
+//ignore_groups =true
     sessions = map[string]Session{}
 
     processor = sampleProcessor
+    
 )
 
 type (
     // Session Holds info about a session
     Session map[string]interface{}
-
+   
     // JSON Holds a JSON object
     JSON map[string]interface{}
-
+    
     // Processor Alias for Process func
     Processor func(session Session, message string) (string, error)
 )
@@ -50,6 +54,19 @@ type D struct {
     Mentions     []infermedica.Evidence   `json:"mentions"`
    
 }
+
+
+type Group struct {
+    Ignore_groups   bool   `json:"ignore_groups"`
+   
+}
+type DiagnosisReq struct {
+    Sex       infermedica.Sex        `json:"sex"`
+    Age       int        `json:"age"`
+    Evidences []infermedica.Evidence `json:"evidence"`
+    Extras     Group             `json:"extras"`
+}
+ 
 
 func ProcessFunc(p Processor) {
     processor = p
@@ -103,16 +120,18 @@ _, evFound := session["Evidence"]
  return  fmt.Sprintf(`<font color="red"> this is not a valid symptom %s !</font>`, message),nil
 }
 
-var D infermedica.DiagnosisReq
+var D DiagnosisReq
+
+
  x,_:=strconv.ParseInt(session["age"].(string), 10, 64)
 // var x int64=session["age"].(int64)
 if session["sex"].(string)=="male"{
   //reflect.ValueOf(session["age"]).Int()
-   
- D=infermedica.DiagnosisReq{Sex:infermedica.SexMale,Age:int(x) ,Evidences:session["Evidence"].([]infermedica.Evidence)}
+  
+ D=DiagnosisReq{Sex:infermedica.SexMale,Age:int(x) ,Evidences:session["Evidence"].([]infermedica.Evidence),Extras:Group{Ignore_groups:true}}
 }else {
 
-D=infermedica.DiagnosisReq{Sex:infermedica.SexFemale,Age:int(x),Evidences:session["Evidence"].([]infermedica.Evidence)}
+D=DiagnosisReq{Sex:infermedica.SexFemale,Age:int(x),Evidences:session["Evidence"].([]infermedica.Evidence),Extras:Group{Ignore_groups:true}}
 
 }
 
@@ -129,16 +148,22 @@ err2:=evadd(message,session)
 if err2 != nil {
  return  fmt.Sprintf(`<font color="red"> this is not a valid choice  choose yes or no or unknown </font>`),nil
 }
-var D infermedica.DiagnosisReq
+var D DiagnosisReq
+var DD infermedica.DiagnosisReq
+
+
+
  x,_:=strconv.ParseInt(session["age"].(string), 10, 64)
 // var x int64=session["age"].(int64)
 if session["sex"].(string)=="male"{
   //reflect.ValueOf(session["age"]).Int()
    
- D=infermedica.DiagnosisReq{Sex:infermedica.SexMale,Age:int(x) ,Evidences:session["Evidence"].([]infermedica.Evidence)}
+ D=DiagnosisReq{Sex:infermedica.SexMale,Age:int(x) ,Evidences:session["Evidence"].([]infermedica.Evidence),Extras:Group{Ignore_groups:true}}
+ DD=infermedica.DiagnosisReq{Sex:infermedica.SexMale,Age:int(x) ,Evidences:session["Evidence"].([]infermedica.Evidence)}
 }else {
 
-D=infermedica.DiagnosisReq{Sex:infermedica.SexFemale,Age:int(x),Evidences:session["Evidence"].([]infermedica.Evidence)}
+D=DiagnosisReq{Sex:infermedica.SexFemale,Age:int(x),Evidences:session["Evidence"].([]infermedica.Evidence),Extras:Group{Ignore_groups:true}}
+DD=infermedica.DiagnosisReq{Sex:infermedica.SexMale,Age:int(x) ,Evidences:session["Evidence"].([]infermedica.Evidence)}
 
 }
 
@@ -148,7 +173,7 @@ session["questioninfo"]=m.Question.Items[0].ID
 maxx:=getmaximum(session,m.Conditions)
 n,_:=strconv.ParseFloat(session["probability"].(string), 64)
 if maxx>float64(n){
-lab,_:=app.LabTestsRecommend(D)
+lab,_:=app.LabTestsRecommend(DD)
 conddetaild:=getcondition(session)
  delete(session, "Evidence")
 
@@ -308,14 +333,14 @@ evarray=ev.([]infermedica.Evidence)
    
 }
 
-func diagnosis(DOutput  infermedica.DiagnosisReq) (*infermedica.DiagnosisRes){
+func diagnosis(DOutput  DiagnosisReq) (*infermedica.DiagnosisRes){
 
     //app := infermedica.NewApp("a3e97cd7", "af637361b0854d49d87b6af528c086dc", "")
        
       
  
   
-DiagOutput,_ :=app.Diagnosis(DOutput)
+DiagOutput,_ := Diagnosis(DOutput)
   
  
  return DiagOutput
@@ -343,6 +368,10 @@ func handle(w http.ResponseWriter, r *http.Request) {
 func handleChat(w http.ResponseWriter, r *http.Request) {
    // Make sure only POST requests are handled
     // Make sure a UUID exists in the Authorization header
+    if r.Method != http.MethodPost {
+        http.Error(w, "Only POST requests are allowed.", http.StatusMethodNotAllowed)
+        return
+    }
     uuid := r.Header.Get("Authorization")
     if uuid == "" {
         http.Error(w, "Missing or empty Authorization header.", http.StatusUnauthorized)
@@ -419,6 +448,52 @@ func withLog(fn http.HandlerFunc) http.HandlerFunc {
 func writeJSON(w http.ResponseWriter, data JSON) {
     w.Header().Set("Content-Type", "application/json")
     json.NewEncoder(w).Encode(data)
+}
+
+func  Diagnosis(dr DiagnosisReq) (*infermedica.DiagnosisRes, error) {
+    if !dr.Sex.IsValid() {
+        return nil, errors.New("Unexpected value for Sex")
+    }
+    b := new(bytes.Buffer)
+    err1 := json.NewEncoder(b).Encode(dr)
+    if err1 != nil {
+        return nil, err1
+    }
+//app key
+    fmt.Println("l1")
+    req, err := http.NewRequest("POST", "https://api.infermedica.com/v2/diagnosis", b)
+    if err != nil {
+        fmt.Println("error")
+        return nil, err
+    }
+    //a3e97cd7", "af637361b0854d49d87b6af528c086dc"
+var A string ="a3e97cd7"
+var B string="af637361b0854d49d87b6af528c086dc"
+    fmt.Println(req)
+    //req.Header.Add("Strict-Transport-Security", "max-age=63072000; includeSubDomains")
+//req.Header.Add("Access-Control-Allow-Origin", "*")
+    
+    req.Header.Add("App-Id",A)
+    req.Header.Add("App-Key",B)
+    req.Header.Add("Content-Type", "application/json")
+    tr := &http.Transport{
+        TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+    }
+    client := &http.Client{Transport: tr}
+    res, err3 := client.Do(req)
+
+    if err3 != nil {
+        fmt.Println(err3)
+        return nil, err3
+    }
+    fmt.Println(res)
+    r := infermedica.DiagnosisRes{}
+    err = json.NewDecoder(res.Body).Decode(&r)
+     fmt.Println(r)
+    if err != nil {
+        return nil, err
+    }
+    return &r, nil
 }
 
 
